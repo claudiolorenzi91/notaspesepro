@@ -1,0 +1,1516 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nota Spese & Gestione Scontrini Pro</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- html2pdf.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <!-- Tesseract.js per OCR Reale dagli Scontrini -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- PWA & Mobile Web App Meta -->
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="NotaSpese">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            800: '#1e40af',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @media print {
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            body { background: white; color: black; }
+            .shadow-card { box-shadow: none !important; border: 1px solid #e5e7eb; }
+        }
+        .print-only { display: none; }
+        .shadow-card {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col relative">
+
+    <!-- Toast Notification Container -->
+    <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 no-print"></div>
+
+    <!-- Navigation Header -->
+    <header class="bg-slate-900 text-white sticky top-0 z-30 shadow-md no-print">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-2.5">
+                <div class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                    <i class="fa-solid fa-receipt"></i>
+                </div>
+                <span class="font-bold text-base tracking-tight text-slate-100">Nota Spese Pro</span>
+            </div>
+            <div class="flex items-center space-x-2 sm:space-x-3">
+                <button onclick="exportToCSV()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-sm font-medium transition flex items-center gap-2 border border-slate-700">
+                    <i class="fa-solid fa-file-excel text-emerald-400"></i>
+                    <span class="hidden sm:inline">Esporta Excel/CSV</span>
+                </button>
+                <button onclick="exportToPDF()" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-sm font-medium transition flex items-center gap-2 shadow-sm">
+                    <i class="fa-solid fa-file-pdf"></i>
+                    <span class="hidden sm:inline">Scarica PDF</span>
+                </button>
+                <button onclick="handlePrint()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-sm font-medium transition flex items-center gap-2 border border-slate-700">
+                    <i class="fa-solid fa-print text-sky-400"></i>
+                    <span class="hidden sm:inline">Stampa</span>
+                </button>
+                <button onclick="openNewExpenseModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-2">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Nuova Spesa</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-grow w-full">
+
+        <!-- Printable Header (Visible only in print) -->
+        <div class="print-only mb-6 border-b pb-4">
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <h1 class="text-2xl font-bold text-slate-900">NOTA SPESE E RIMBORSO TRASFERTA</h1>
+                    <p class="text-sm text-slate-600">Documento riepilogativo per amministrazione e contabilità</p>
+                </div>
+                <div class="text-right">
+                    <p class="text-xs text-slate-500">Data Stampa: <span id="printDate"></span></p>
+                    <p class="text-xs text-slate-500">ID Referenza: <span id="printRefId">NS-2026-081</span></p>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs bg-slate-50 p-3 rounded border">
+                <div><strong>Dipendente:</strong> <span id="printEmpName">-</span></div>
+                <div><strong>Periodo Riferimento:</strong> <span id="printEmpPeriod">-</span></div>
+                <div><strong>Codice Progetto:</strong> <span id="printEmpProj">-</span></div>
+                <div><strong>Stato Generale:</strong> Approvato</div>
+            </div>
+        </div>
+
+        <!-- Employee Info Header Card -->
+        <div class="bg-white rounded-xl p-5 mb-6 shadow-card border border-slate-200/80 no-print">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4 mb-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-12 h-12 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 font-bold text-lg">
+                        <i class="fa-solid fa-user-gear"></i>
+                    </div>
+                    <div>
+                        <h2 class="font-bold text-slate-800 text-base flex items-center gap-2">
+                            <span>Anagrafica Trasfertista</span>
+                            <span class="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-medium border border-blue-200">Foglio Corrente</span>
+                        </h2>
+                        <p class="text-xs text-slate-500">Inserisci i dati personali e l'intervallo di date di riferimento</p>
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-2">
+                    <button onclick="saveUserProfile()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-floppy-disk"></i> Salva Dati Anagrafici
+                    </button>
+                    <button onclick="promptResetData()" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-semibold transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-rotate-left"></i> Resetta Tutto
+                    </button>
+                </div>
+            </div>
+
+            <!-- Profile Form Fields -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div>
+                    <label class="block font-medium text-slate-600 mb-1">Nome e Cognome</label>
+                    <input type="text" id="userFullName" value="Mario Rossi" oninput="updatePrintHeader()" class="w-full px-3 py-1.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block font-medium text-slate-600 mb-1">Periodo Riferimento (Dal - Al)</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="date" id="userPeriodFrom" value="2026-08-01" onchange="updatePrintHeader(); renderTable();" class="w-full px-2 py-1.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        <input type="date" id="userPeriodTo" value="2026-08-20" onchange="updatePrintHeader(); renderTable();" class="w-full px-2 py-1.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    </div>
+                </div>
+                <div>
+                    <label class="block font-medium text-slate-600 mb-1">Progetto / Centro Costo</label>
+                    <input type="text" id="userProject" value="PRJ-2026-MILANO" oninput="updatePrintHeader()" class="w-full px-3 py-1.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                </div>
+            </div>
+        </div>
+
+        <!-- KPI Summary Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            <div class="bg-white p-4 rounded-xl border border-slate-200/80 shadow-card flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Totale Generale</p>
+                    <h3 class="text-2xl font-bold text-slate-900 mt-1" id="kpiTotal">€ 0.00</h3>
+                    <p class="text-xs text-slate-400 mt-0.5"><span id="kpiCount">0</span> spese registrate</p>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-calculator"></i>
+                </div>
+            </div>
+
+            <div class="bg-white p-4 rounded-xl border border-slate-200/80 shadow-card flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-medium text-purple-600 uppercase tracking-wider">Carta Aziendale</p>
+                    <h3 class="text-2xl font-bold text-purple-700 mt-1" id="kpiCorporate">€ 0.00</h3>
+                    <p class="text-xs text-slate-400 mt-0.5">Addebito diretto azienda</p>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-purple-50 border border-purple-100 text-purple-600 flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-credit-card"></i>
+                </div>
+            </div>
+
+            <div class="bg-white p-4 rounded-xl border border-slate-200/80 shadow-card flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-medium text-emerald-600 uppercase tracking-wider">Scontrini Allegati</p>
+                    <h3 class="text-2xl font-bold text-emerald-700 mt-1" id="kpiReceipts">0 / 0</h3>
+                    <p class="text-xs text-slate-400 mt-0.5">Giustificativi caricati</p>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-file-image"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter & Search Toolbar -->
+        <div class="bg-white rounded-t-xl border border-slate-200/80 p-4 no-print flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div class="flex flex-wrap items-center gap-2 flex-grow">
+                <!-- Search -->
+                <div class="relative min-w-[200px] flex-grow sm:flex-grow-0">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+                    <input type="text" id="searchInput" oninput="renderTable()" placeholder="Cerca fornitore, note..." class="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                </div>
+
+                <!-- Category Filter -->
+                <select id="filterCategory" onchange="renderTable()" class="px-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+                    <option value="">Tutte le categorie</option>
+                    <option value="Vitto / Ristoranti">Vitto / Ristoranti</option>
+                    <option value="Alloggio / Hotel">Alloggio / Hotel</option>
+                    <option value="Trasporti / Treno / Aereo">Trasporti / Treno / Aereo</option>
+                    <option value="Carburante">Carburante</option>
+                    <option value="Pedaggi / Autostrada">Pedaggi / Autostrada</option>
+                    <option value="Taxi / Uber">Taxi / Uber</option>
+                    <option value="Varie / Cancelleria">Varie / Cancelleria</option>
+                </select>
+
+                <!-- Payment Method Filter -->
+                <select id="filterPayment" onchange="renderTable()" class="px-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+                    <option value="">Tutti i pagamenti</option>
+                    <option value="Carta di Credito">Carta di Credito</option>
+                    <option value="Carta Aziendale">Carta Aziendale</option>
+                    <option value="Contanti">Contanti</option>
+                </select>
+
+                <!-- Period Filter Toggle -->
+                <label class="inline-flex items-center gap-1.5 text-xs text-slate-700 font-medium bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-100 transition">
+                    <input type="checkbox" id="filterByPeriod" checked onchange="renderTable()" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
+                    <span>Solo periodo di riferimento</span>
+                </label>
+            </div>
+
+            <div class="flex items-center space-x-2">
+                <button onclick="toggleCharts()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-chart-pie text-blue-600"></i>
+                    <span>Grafici</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Charts Dashboard (Collapsible) -->
+        <div id="chartsContainer" class="bg-white border-x border-b border-slate-200/80 p-5 hidden no-print">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Ripartizione per Categoria Spesa</h4>
+                    <div class="h-56 relative flex items-center justify-center">
+                        <canvas id="categoryChart"></canvas>
+                    </div>
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Metodi di Pagamento Utilizzati</h4>
+                    <div class="h-56 relative flex items-center justify-center">
+                        <canvas id="paymentChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Expenses Data Table -->
+        <div class="bg-white border border-slate-200/80 rounded-b-xl shadow-card overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr class="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
+                            <th class="py-3 px-3 w-10 text-center">#</th>
+                            <th class="py-3 px-3">Data</th>
+                            <th class="py-3 px-3">Categoria</th>
+                            <th class="py-3 px-3">Descrizione / Note</th>
+                            <th class="py-3 px-3">Pagamento</th>
+                            <th class="py-3 px-3 text-right">Importo Tot.</th>
+                            <th class="py-3 px-3 text-center">Foto Scontrino</th>
+                            <th class="py-3 px-3 text-right no-print">Azioni</th>
+                        </tr>
+                    </thead>
+                    <tbody id="expenseTableBody" class="divide-y divide-slate-200 text-slate-700">
+                        <!-- Dynamic Rows loaded via JS -->
+                    </tbody>
+                    <tfoot>
+                        <tr class="bg-slate-50 font-bold text-slate-800 border-t-2 border-slate-300">
+                            <td colspan="5" class="py-3 px-3 text-right uppercase tracking-wider">Totale Generale Nota Spese:</td>
+                            <td class="py-3 px-3 text-right text-sm text-blue-700 font-extrabold" id="tableTotalAmount">€ 0.00</td>
+                            <td colspan="2"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+            <!-- Empty State Message -->
+            <div id="emptyState" class="hidden py-12 text-center text-slate-400">
+                <i class="fa-solid fa-receipt text-4xl mb-3 text-slate-300"></i>
+                <p class="font-medium text-slate-600">Nessuna spesa trovata</p>
+                <p class="text-xs mt-1">Fai clic su "Nuova Spesa" per registrare un costo o caricare uno scontrino.</p>
+            </div>
+        </div>
+
+        <!-- Printable Signatures Block -->
+        <div class="print-only mt-12 pt-6 border-t border-slate-300">
+            <div class="grid grid-cols-2 gap-12 text-xs">
+                <div>
+                    <p class="font-bold mb-8">Firma del Dipendente / Trasfertista:</p>
+                    <div class="border-b border-slate-400 w-3/4"></div>
+                    <p class="text-slate-500 mt-1">Data: ____________________</p>
+                </div>
+                <div>
+                    <p class="font-bold mb-8">Firma e Approvazione Responsabile:</p>
+                    <div class="border-b border-slate-400 w-3/4"></div>
+                    <p class="text-slate-500 mt-1">Data: ____________________</p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Modal Form (Create / Edit Expense) -->
+    <div id="expenseModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4 no-print overflow-y-auto">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden my-8 transform transition-all">
+            
+            <!-- Modal Header -->
+            <div class="bg-slate-900 px-6 py-4 text-white flex justify-between items-center">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-file-circle-plus text-blue-400 text-lg"></i>
+                    <h3 class="font-bold text-base" id="modalTitle">Registra Nuova Spesa</h3>
+                </div>
+                <button onclick="closeModal('expenseModal')" class="text-slate-400 hover:text-white transition">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <!-- Modal Body Form -->
+            <form id="expenseForm" onsubmit="handleSaveExpense(event)" class="p-6 space-y-4 text-xs">
+                <input type="hidden" id="expenseId" value="">
+
+                <!-- Receipt Upload Box with simulated OCR & Live Camera -->
+                <div class="bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl p-4 text-center hover:border-blue-400 transition relative" id="dropZone">
+                    
+                    <div id="uploadPrompt" class="space-y-3">
+                        <div class="flex items-center justify-center gap-3">
+                            <div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center">
+                                <i class="fa-solid fa-receipt text-base"></i>
+                            </div>
+                        </div>
+                        <div>
+                            <p class="font-semibold text-slate-700">Aggiungi Foto Scontrino o Ricevuta</p>
+                            <p class="text-slate-400 text-[11px]">Carica un file o scatta una foto in tempo reale (Smart-OCR attivo)</p>
+                        </div>
+
+                        <!-- Action Buttons: File Input vs Camera -->
+                        <div class="flex flex-wrap items-center justify-center gap-2 pt-1">
+                            <label class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5">
+                                <i class="fa-solid fa-folder-open"></i>
+                                <span>Sfoglia File</span>
+                                <input type="file" id="receiptFileInput" accept="image/*" onchange="handleFileSelect(event)" class="hidden">
+                            </label>
+                            
+                            <button type="button" onclick="openCameraModal()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-sm transition flex items-center gap-1.5">
+                                <i class="fa-solid fa-camera"></i>
+                                <span>Scatta Foto</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Receipt Preview inside upload box -->
+                    <div id="receiptPreviewBox" class="hidden flex items-center justify-between bg-white p-2.5 rounded-lg border border-slate-200">
+                        <div class="flex items-center space-x-3 overflow-hidden">
+                            <img id="previewImgThumbnail" src="" class="w-12 h-12 object-cover rounded border">
+                            <div class="text-left truncate">
+                                <p class="font-semibold text-slate-800 truncate" id="receiptFileName">scontrino.jpg</p>
+                                <p class="text-[10px] text-emerald-600 font-medium"><i class="fa-solid fa-circle-check"></i> Foto allegata correttamente</p>
+                            </div>
+                        </div>
+                        <button type="button" onclick="removeReceiptPhoto(event)" class="px-2 py-1 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded text-xs transition">
+                            <i class="fa-solid fa-trash"></i> Rimuovi
+                        </button>
+                    </div>
+
+                    <!-- OCR Status & Progress Indicator -->
+                    <div id="ocrStatusBox" class="hidden mt-3 p-2.5 bg-blue-50 border border-blue-200 rounded-lg text-left">
+                        <div class="flex items-center justify-between text-xs font-semibold text-blue-800 mb-1">
+                            <span class="flex items-center gap-2">
+                                <i class="fa-solid fa-wand-magic-sparkles text-blue-600 animate-spin" id="ocrIcon"></i>
+                                <span id="ocrStatusText">Analisi OCR in corso...</span>
+                            </span>
+                            <span id="ocrPercent" class="text-blue-600">0%</span>
+                        </div>
+                        <div class="w-full bg-blue-200 h-1.5 rounded-full overflow-hidden">
+                            <div id="ocrProgressBar" class="bg-blue-600 h-full w-0 transition-all duration-200"></div>
+                        </div>
+                        <div id="ocrResultBadge" class="hidden mt-2 pt-2 border-t border-blue-200/60 text-[11px] text-emerald-700 font-medium flex items-center gap-1.5">
+                            <i class="fa-solid fa-circle-check"></i>
+                            <span id="ocrResultText">Dati estratti dallo scontrino!</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Form Fields Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">Data Spesa <span class="text-rose-500">*</span></label>
+                        <input type="date" id="formDate" required class="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    </div>
+
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">Categoria <span class="text-rose-500">*</span></label>
+                        <select id="formCategory" required class="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+                            <option value="Vitto / Ristoranti">Vitto / Ristoranti</option>
+                            <option value="Alloggio / Hotel">Alloggio / Hotel</option>
+                            <option value="Trasporti / Treno / Aereo">Trasporti / Treno / Aereo</option>
+                            <option value="Carburante">Carburante</option>
+                            <option value="Pedaggi / Autostrada">Pedaggi / Autostrada</option>
+                            <option value="Taxi / Uber">Taxi / Uber</option>
+                            <option value="Varie / Cancelleria">Varie / Cancelleria</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">Metodo Pagamento <span class="text-rose-500">*</span></label>
+                        <select id="formPayment" required class="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+                            <option value="Carta di Credito">Carta di Credito</option>
+                            <option value="Carta Aziendale">Carta Aziendale</option>
+                            <option value="Contanti">Contanti</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">Valuta e Importo <span class="text-rose-500">*</span></label>
+                        <div class="flex gap-2">
+                            <select id="formCurrency" required class="w-1/3 px-2 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white font-semibold">
+                                <option value="EUR">EUR (€)</option>
+                                <option value="USD">USD ($)</option>
+                                <option value="CHF">CHF (CHF)</option>
+                                <option value="GBP">GBP (£)</option>
+                                <option value="JPY">JPY (¥)</option>
+                                <option value="CAD">CAD ($)</option>
+                                <option value="AUD">AUD ($)</option>
+                                <option value="BRL">BRL (R$)</option>
+                                <option value="CNY">CNY (¥)</option>
+                                <option value="INR">INR (₹)</option>
+                                <option value="SEK">SEK (kr)</option>
+                                <option value="NOK">NOK (kr)</option>
+                            </select>
+                            <input type="number" id="formAmount" step="0.01" min="0.01" required placeholder="0.00" class="w-2/3 px-3 py-2 text-sm font-bold rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">Descrizione / Note</label>
+                    <textarea id="formNotes" rows="2" placeholder="Es. Cena cliente Rossi, Taxi aeroporto..." class="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none"></textarea>
+                </div>
+
+                <!-- Modal Actions -->
+                <div class="flex items-center justify-end space-x-3 pt-4 border-t border-slate-200">
+                    <button type="button" onclick="closeModal('expenseModal')" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition">
+                        Annulla
+                    </button>
+                    <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-sm transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span>Salva Spesa</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Receipt Viewer Lightbox Modal -->
+    <div id="receiptModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4 no-print">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="bg-slate-900 px-4 py-3 text-white flex justify-between items-center">
+                <span class="font-bold text-xs truncate" id="receiptModalMeta">Scontrino Giustificativo</span>
+                <button onclick="closeModal('receiptModal')" class="text-slate-400 hover:text-white transition">
+                    <i class="fa-solid fa-xmark text-base"></i>
+                </button>
+            </div>
+            <div class="p-4 bg-slate-100 flex items-center justify-center flex-grow overflow-auto min-h-[300px]">
+                <img id="receiptModalImg" src="" class="max-w-full max-h-[60vh] object-contain rounded shadow transition-transform duration-200">
+            </div>
+            <div class="bg-white px-4 py-3 border-t border-slate-200 flex items-center justify-between">
+                <button onclick="rotateModalImage()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium transition flex items-center gap-1">
+                    <i class="fa-solid fa-rotate"></i> Ruota
+                </button>
+                <a id="downloadReceiptBtn" download="scontrino.jpg" href="#" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1">
+                    <i class="fa-solid fa-download"></i> Scarica
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Camera Capture Modal -->
+    <div id="cameraModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4 no-print">
+        <div class="bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col text-white">
+            <div class="px-4 py-3 bg-slate-800 flex justify-between items-center border-b border-slate-700">
+                <span class="font-bold text-xs flex items-center gap-2">
+                    <i class="fa-solid fa-camera text-emerald-400"></i> Scatta Foto Scontrino
+                </span>
+                <button onclick="closeCameraModal()" class="text-slate-400 hover:text-white transition">
+                    <i class="fa-solid fa-xmark text-base"></i>
+                </button>
+            </div>
+            <div class="relative bg-black flex items-center justify-center min-h-[280px]">
+                <video id="cameraVideo" autoplay playsinline class="w-full h-auto max-h-[60vh] object-cover"></video>
+                <canvas id="cameraCanvas" class="hidden"></canvas>
+                <div id="cameraStatus" class="absolute inset-0 bg-slate-900/90 flex flex-col items-center justify-center p-4 text-center hidden">
+                    <i class="fa-solid fa-triangle-exclamation text-amber-400 text-2xl mb-2"></i>
+                    <p class="text-xs font-semibold">Fotocamera non accessibile</p>
+                    <p class="text-[10px] text-slate-400 mt-1">Verifica i permessi del browser per la fotocamera.</p>
+                </div>
+            </div>
+            <div class="p-4 bg-slate-800 border-t border-slate-700 flex items-center justify-around">
+                <button onclick="switchCameraFacing()" class="px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-medium transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-camera-rotate"></i> Cambia
+                </button>
+                <button onclick="capturePhotoFromCamera()" class="w-12 h-12 bg-emerald-500 hover:bg-emerald-400 rounded-full flex items-center justify-center text-white text-xl shadow-lg transition transform active:scale-95">
+                    <i class="fa-solid fa-camera"></i>
+                </button>
+                <button onclick="closeCameraModal()" class="px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-medium transition">
+                    Annulla
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Dialog Modal -->
+    <div id="confirmModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4 no-print">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden p-6 text-center">
+            <div class="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4 text-xl">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <h3 class="font-bold text-slate-800 text-sm mb-2" id="confirmTitle">Conferma azione</h3>
+            <p class="text-xs text-slate-500 mb-6" id="confirmMessage">Sei sicuro di voler procedere?</p>
+            <div class="flex items-center justify-center gap-3">
+                <button onclick="closeConfirmModal(false)" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition">
+                    Annulla
+                </button>
+                <button id="confirmBtnAction" onclick="closeConfirmModal(true)" class="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-semibold transition">
+                    Conferma
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let expenses = [
+            {
+                id: 'exp-1',
+                date: '2026-08-10',
+                category: 'Vitto / Ristoranti',
+                payment: 'Carta di Credito',
+                currency: 'EUR',
+                amount: 45.50,
+                notes: 'Cena di lavoro con cliente di Milano',
+                receipt: generateSampleReceiptSVG('Osteria del Naviglio', '45.50 €', '10/08/2026')
+            },
+            {
+                id: 'exp-2',
+                date: '2026-08-11',
+                category: 'Trasporti / Treno / Aereo',
+                payment: 'Carta Aziendale',
+                currency: 'EUR',
+                amount: 89.00,
+                notes: 'Biglietto Frecciarossa Roma-Milano',
+                receipt: generateSampleReceiptSVG('Trenitalia S.p.A.', '89.00 €', '11/08/2026')
+            },
+            {
+                id: 'exp-3',
+                date: '2026-08-12',
+                category: 'Carburante',
+                payment: 'Contanti',
+                currency: 'EUR',
+                amount: 60.00,
+                notes: 'Rifornimento auto aziendale per trasferta',
+                receipt: generateSampleReceiptSVG('Eni Station', '60.00 €', '12/08/2026')
+            },
+            {
+                id: 'exp-4',
+                date: '2026-08-14',
+                category: 'Alloggio / Hotel',
+                payment: 'Carta di Credito',
+                currency: 'CHF',
+                amount: 140.00,
+                notes: 'Soggiorno 1 notte trasferta commerciale',
+                receipt: generateSampleReceiptSVG('Hotel Zurich', '140.00 CHF', '14/08/2026')
+            }
+        ];
+
+        let currentReceiptData = null;
+        let currentRotation = 0;
+        let categoryChartInstance = null;
+        let paymentChartInstance = null;
+        
+        let mediaStream = null;
+        let currentFacingMode = 'environment';
+        let pendingConfirmCallback = null;
+
+        window.addEventListener('DOMContentLoaded', () => {
+            loadUserProfile();
+            document.getElementById('printDate').innerText = new Date().toLocaleDateString('it-IT');
+            renderTable();
+            initCharts();
+            updatePrintHeader();
+        });
+
+        function getCurrencySymbol(code) {
+            const map = {
+                'EUR': '€', 'USD': '$', 'CHF': 'CHF', 'GBP': '£',
+                'JPY': '¥', 'CAD': 'CA$', 'AUD': 'A$', 'BRL': 'R$',
+                'CNY': '¥', 'INR': '₹', 'SEK': 'kr', 'NOK': 'kr'
+            };
+            return map[code] || code || '€';
+        }
+
+        function formatDate(dateStr) {
+            if(!dateStr) return '';
+            const [y, m, d] = dateStr.split('-');
+            return `${d}/${m}/${y}`;
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            
+            let bgClass = 'bg-slate-800 text-white';
+            let iconClass = 'fa-info-circle text-blue-400';
+            
+            if (type === 'success') {
+                bgClass = 'bg-emerald-900/90 border border-emerald-500 text-white';
+                iconClass = 'fa-circle-check text-emerald-400';
+            } else if (type === 'warning') {
+                bgClass = 'bg-amber-900/90 border border-amber-500 text-white';
+                iconClass = 'fa-triangle-exclamation text-amber-400';
+            } else if (type === 'error') {
+                bgClass = 'bg-rose-900/90 border border-rose-500 text-white';
+                iconClass = 'fa-circle-xmark text-rose-400';
+            }
+
+            toast.className = `${bgClass} px-4 py-3 rounded-xl shadow-xl text-xs flex items-center gap-2.5 transform transition-all duration-300 opacity-0 translate-y-2`;
+            toast.innerHTML = `<i class="fa-solid ${iconClass} text-sm"></i> <span>${escapeHtml(message)}</span>`;
+            
+            container.appendChild(toast);
+            
+            requestAnimationFrame(() => {
+                toast.classList.remove('opacity-0', 'translate-y-2');
+            });
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+
+        function generateSampleReceiptSVG(title, amount, date) {
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400" viewBox="0 0 300 400">
+                <rect width="100%" height="100%" fill="#f8fafc"/>
+                <path d="M0,0 L15,10 L30,0 L45,10 L60,0 L75,10 L90,0 L105,10 L120,0 L135,10 L150,0 L165,10 L180,0 L195,10 L210,0 L225,10 L240,0 L255,10 L270,0 L285,10 L300,0 L300,400 L285,390 L270,400 L255,390 L240,400 L225,390 L210,400 L195,390 L180,400 L165,390 L150,400 L135,390 L120,400 L105,390 L90,400 L75,390 L60,400 L45,390 L30,400 L15,390 L0,400 Z" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+                <text x="150" y="50" font-family="monospace" font-size="16" font-weight="bold" text-anchor="middle" fill="#0f172a">FISCALE SCONTRINO</text>
+                <text x="150" y="75" font-family="monospace" font-size="14" text-anchor="middle" fill="#334155">${title}</text>
+                <line x1="30" y1="90" x2="270" y2="90" stroke="#94a3b8" stroke-dasharray="4"/>
+                <text x="40" y="120" font-family="monospace" font-size="12" fill="#475569">DATA: ${date}</text>
+                <text x="40" y="140" font-family="monospace" font-size="12" fill="#475569">RICEVUTA N: #${Math.floor(Math.random()*89999+10000)}</text>
+                <line x1="30" y1="160" x2="270" y2="160" stroke="#94a3b8" stroke-dasharray="4"/>
+                <text x="40" y="200" font-family="monospace" font-size="13" fill="#334155">DESCRIZIONE SERVIZI</text>
+                <text x="260" y="200" font-family="monospace" font-size="13" text-anchor="end" fill="#334155">${amount}</text>
+                <line x1="30" y1="280" x2="270" y2="280" stroke="#0f172a" stroke-width="2"/>
+                <text x="40" y="310" font-family="monospace" font-size="16" font-weight="bold" fill="#0f172a">TOTALE EURO</text>
+                <text x="260" y="310" font-family="monospace" font-size="18" font-weight="bold" text-anchor="end" fill="#2563eb">${amount}</text>
+                <text x="150" y="360" font-family="monospace" font-size="11" text-anchor="middle" fill="#64748b">*** GRAZIE E ARRIVEDERCI ***</text>
+            </svg>`;
+            return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+        }
+
+        function getFilteredExpenses() {
+            const searchVal = (document.getElementById('searchInput')?.value || '').toLowerCase();
+            const catVal = document.getElementById('filterCategory')?.value || '';
+            const payVal = document.getElementById('filterPayment')?.value || '';
+            const periodFrom = document.getElementById('userPeriodFrom')?.value || '';
+            const periodTo = document.getElementById('userPeriodTo')?.value || '';
+            const usePeriodFilter = document.getElementById('filterByPeriod') ? document.getElementById('filterByPeriod').checked : true;
+
+            return expenses.filter(exp => {
+                const matchSearch = exp.notes.toLowerCase().includes(searchVal) || 
+                                    exp.category.toLowerCase().includes(searchVal);
+                const matchCat = catVal === '' || exp.category === catVal;
+                const matchPay = payVal === '' || exp.payment === payVal;
+
+                let matchPeriod = true;
+                if (usePeriodFilter) {
+                    if (periodFrom && exp.date < periodFrom) matchPeriod = false;
+                    if (periodTo && exp.date > periodTo) matchPeriod = false;
+                }
+
+                return matchSearch && matchCat && matchPay && matchPeriod;
+            });
+        }
+
+        function calculateKPIs(filteredList = getFilteredExpenses()) {
+            let corporateByCurr = {};
+            let totalsByCurr = {};
+            let receiptCount = 0;
+
+            filteredList.forEach(e => {
+                const amt = parseFloat(e.amount || 0);
+                const curr = e.currency || 'EUR';
+                totalsByCurr[curr] = (totalsByCurr[curr] || 0) + amt;
+                if (e.payment === 'Carta Aziendale') {
+                    corporateByCurr[curr] = (corporateByCurr[curr] || 0) + amt;
+                }
+                if (e.receipt) receiptCount++;
+            });
+
+            const totalStr = Object.keys(totalsByCurr).map(c => `${getCurrencySymbol(c)} ${totalsByCurr[c].toFixed(2)}`).join(' + ') || '€ 0.00';
+            const corpStr = Object.keys(corporateByCurr).map(c => `${getCurrencySymbol(c)} ${corporateByCurr[c].toFixed(2)}`).join(' + ') || '€ 0.00';
+
+            document.getElementById('kpiTotal').innerText = totalStr;
+            document.getElementById('kpiCount').innerText = filteredList.length;
+            document.getElementById('kpiCorporate').innerText = corpStr;
+            document.getElementById('kpiReceipts').innerText = `${receiptCount} / ${filteredList.length}`;
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('expenseTableBody');
+            const filtered = getFilteredExpenses();
+
+            filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            tbody.innerHTML = '';
+
+            if (filtered.length === 0) {
+                document.getElementById('emptyState').classList.remove('hidden');
+            } else {
+                document.getElementById('emptyState').classList.add('hidden');
+            }
+
+            let totalsByCurr = {};
+
+            filtered.forEach((exp, index) => {
+                const curr = exp.currency || 'EUR';
+                const amt = parseFloat(exp.amount || 0);
+                totalsByCurr[curr] = (totalsByCurr[curr] || 0) + amt;
+
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50 transition border-b border-slate-100';
+
+                let catIcon = 'fa-tag';
+                if(exp.category.includes('Vitto')) catIcon = 'fa-utensils text-amber-500';
+                else if(exp.category.includes('Hotel')) catIcon = 'fa-hotel text-indigo-500';
+                else if(exp.category.includes('Trasporti')) catIcon = 'fa-train text-blue-500';
+                else if(exp.category.includes('Carburante')) catIcon = 'fa-gas-pump text-rose-500';
+                else if(exp.category.includes('Pedaggi')) catIcon = 'fa-road text-slate-500';
+                else if(exp.category.includes('Taxi')) catIcon = 'fa-taxi text-yellow-500';
+
+                tr.innerHTML = `
+                    <td class="py-3 px-3 text-center text-slate-400">${index + 1}</td>
+                    <td class="py-3 px-3 whitespace-nowrap font-medium text-slate-800">${formatDate(exp.date)}</td>
+                    <td class="py-3 px-3 whitespace-nowrap">
+                        <span class="inline-flex items-center gap-1.5 font-medium">
+                            <i class="fa-solid ${catIcon}"></i>
+                            ${exp.category}
+                        </span>
+                    </td>
+                    <td class="py-3 px-3">
+                        <div class="font-medium text-slate-800">${escapeHtml(exp.notes || '-')}</div>
+                    </td>
+                    <td class="py-3 px-3 whitespace-nowrap">
+                        <span class="px-2 py-0.5 rounded text-[11px] font-medium ${exp.payment === 'Carta Aziendale' ? 'bg-purple-50 text-purple-700 border border-purple-200' : 'bg-slate-100 text-slate-700 border'}">
+                            ${exp.payment}
+                        </span>
+                    </td>
+                    <td class="py-3 px-3 text-right font-extrabold text-slate-900 whitespace-nowrap text-xs">
+                        ${getCurrencySymbol(curr)} ${amt.toFixed(2)}
+                    </td>
+                    <td class="py-3 px-3 text-center">
+                        ${exp.receipt ? 
+                            `<button onclick="openReceiptViewer('${exp.id}')" class="inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded text-[11px] font-semibold border border-emerald-200 transition">
+                                <i class="fa-solid fa-image"></i> Scontrino
+                            </button>` : 
+                            `<span class="text-slate-300 italic text-[11px]">Nessuno</span>`
+                        }
+                    </td>
+                    <td class="py-3 px-3 text-right whitespace-nowrap no-print">
+                        <button onclick="editExpense('${exp.id}')" title="Modifica" class="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded transition">
+                            <i class="fa-solid fa-pen-to-square"></i>
+                        </button>
+                        <button onclick="promptDeleteExpense('${exp.id}')" title="Elimina" class="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded transition">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            const totalStrings = Object.keys(totalsByCurr).map(c => `${getCurrencySymbol(c)} ${totalsByCurr[c].toFixed(2)}`);
+            document.getElementById('tableTotalAmount').innerText = totalStrings.join(' + ') || '€ 0.00';
+
+            calculateKPIs(filtered);
+            updateCharts(filtered);
+        }
+
+        function openModal(modalId) {
+            document.getElementById(modalId).classList.remove('hidden');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.add('hidden');
+        }
+
+        function openNewExpenseModal() {
+            resetForm();
+            openModal('expenseModal');
+        }
+
+        function resetForm() {
+            document.getElementById('expenseForm').reset();
+            document.getElementById('expenseId').value = '';
+            document.getElementById('modalTitle').innerText = 'Registra Nuova Spesa';
+            document.getElementById('formDate').value = new Date().toISOString().split('T')[0];
+            document.getElementById('formCurrency').value = 'EUR';
+            document.getElementById('ocrStatusBox').classList.add('hidden');
+            currentReceiptData = null;
+            document.getElementById('receiptPreviewBox').classList.add('hidden');
+            document.getElementById('uploadPrompt').classList.remove('hidden');
+        }
+
+        function openConfirmModal(title, message, onConfirm) {
+            document.getElementById('confirmTitle').innerText = title;
+            document.getElementById('confirmMessage').innerText = message;
+            pendingConfirmCallback = onConfirm;
+            openModal('confirmModal');
+        }
+
+        function closeConfirmModal(result) {
+            closeModal('confirmModal');
+            if (result && pendingConfirmCallback) {
+                pendingConfirmCallback();
+            }
+            pendingConfirmCallback = null;
+        }
+
+        async function openCameraModal() {
+            const cameraModal = document.getElementById('cameraModal');
+            const cameraStatus = document.getElementById('cameraStatus');
+            cameraStatus.classList.add('hidden');
+            cameraModal.classList.remove('hidden');
+
+            await startCameraStream();
+        }
+
+        async function startCameraStream() {
+            if (mediaStream) {
+                stopCameraStream();
+            }
+
+            const video = document.getElementById('cameraVideo');
+            const cameraStatus = document.getElementById('cameraStatus');
+
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: currentFacingMode,
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                });
+                video.srcObject = mediaStream;
+            } catch (err) {
+                console.error("Camera access error:", err);
+                cameraStatus.classList.remove('hidden');
+            }
+        }
+
+        function stopCameraStream() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }
+        }
+
+        function closeCameraModal() {
+            stopCameraStream();
+            document.getElementById('cameraModal').classList.add('hidden');
+        }
+
+        async function switchCameraFacing() {
+            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+            await startCameraStream();
+        }
+
+        function capturePhotoFromCamera() {
+            const video = document.getElementById('cameraVideo');
+            const canvas = document.getElementById('cameraCanvas');
+
+            if (!video.videoWidth) return;
+
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            currentReceiptData = canvas.toDataURL('image/jpeg', 0.85);
+
+            document.getElementById('previewImgThumbnail').src = currentReceiptData;
+            document.getElementById('receiptFileName').innerText = `scatto_fotocamera_${Date.now().toString().slice(-4)}.jpg`;
+            document.getElementById('uploadPrompt').classList.add('hidden');
+            document.getElementById('receiptPreviewBox').classList.remove('hidden');
+
+            closeCameraModal();
+            simulateOCR();
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                currentReceiptData = e.target.result;
+                document.getElementById('previewImgThumbnail').src = currentReceiptData;
+                document.getElementById('receiptFileName').innerText = file.name;
+                document.getElementById('uploadPrompt').classList.add('hidden');
+                document.getElementById('receiptPreviewBox').classList.remove('hidden');
+
+                simulateOCR();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function removeReceiptPhoto(e) {
+            if(e) e.stopPropagation();
+            currentReceiptData = null;
+            document.getElementById('receiptFileInput').value = '';
+            document.getElementById('receiptPreviewBox').classList.add('hidden');
+            document.getElementById('ocrStatusBox').classList.add('hidden');
+            document.getElementById('uploadPrompt').classList.remove('hidden');
+        }
+
+        function simulateOCR() {
+            if (currentReceiptData) {
+                processReceiptOCR(currentReceiptData);
+            }
+        }
+
+        async function processReceiptOCR(imageData) {
+            const statusBox = document.getElementById('ocrStatusBox');
+            const statusText = document.getElementById('ocrStatusText');
+            const percentText = document.getElementById('ocrPercent');
+            const progressBar = document.getElementById('ocrProgressBar');
+            const resultBadge = document.getElementById('ocrResultBadge');
+            const resultText = document.getElementById('ocrResultText');
+            const ocrIcon = document.getElementById('ocrIcon');
+
+            statusBox.classList.remove('hidden');
+            resultBadge.classList.add('hidden');
+            ocrIcon.className = 'fa-solid fa-wand-magic-sparkles text-blue-600 animate-spin';
+            statusText.innerText = 'Inizializzazione OCR...';
+            progressBar.style.width = '15%';
+            percentText.innerText = '15%';
+
+            try {
+                let rawText = '';
+                if (typeof Tesseract !== 'undefined') {
+                    const worker = await Tesseract.createWorker(['ita', 'eng'], 1, {
+                        logger: m => {
+                            if (m.status === 'recognizing text') {
+                                const progress = Math.round((m.progress || 0) * 80) + 15;
+                                progressBar.style.width = `${progress}%`;
+                                percentText.innerText = `${progress}%`;
+                                statusText.innerText = 'Analisi testo scontrino...';
+                            }
+                        }
+                    });
+                    
+                    const ret = await worker.recognize(imageData);
+                    rawText = ret.data.text || '';
+                    await worker.terminate();
+                }
+
+                progressBar.style.width = '100%';
+                percentText.innerText = '100%';
+
+                const extracted = parseReceiptText(rawText);
+
+                let filledFields = [];
+                if (extracted.currency) {
+                    document.getElementById('formCurrency').value = extracted.currency;
+                }
+                if (extracted.amount) {
+                    document.getElementById('formAmount').value = extracted.amount;
+                    filledFields.push(`Importo: ${getCurrencySymbol(extracted.currency)} ${extracted.amount}`);
+                }
+                if (extracted.date) {
+                    document.getElementById('formDate').value = extracted.date;
+                    filledFields.push(`Data: ${formatDate(extracted.date)}`);
+                }
+                if (extracted.category) {
+                    document.getElementById('formCategory').value = extracted.category;
+                    filledFields.push(`Cat: ${extracted.category}`);
+                }
+
+                ocrIcon.className = 'fa-solid fa-circle-check text-emerald-600';
+                statusText.innerText = 'Analisi OCR completata';
+                
+                if (filledFields.length > 0) {
+                    resultBadge.classList.remove('hidden');
+                    resultText.innerText = 'Dati estratti dallo scontrino: ' + filledFields.join(' | ');
+                    showToast('Scontrino analizzato con successo!', 'success');
+                } else {
+                    resultBadge.classList.remove('hidden');
+                    resultText.innerText = 'Scansione completata. Inserisci manualmente l\'importo se non evidenziato.';
+                }
+
+            } catch (err) {
+                console.warn('Tesseract OCR error:', err);
+                ocrIcon.className = 'fa-solid fa-triangle-exclamation text-amber-500';
+                statusText.innerText = 'OCR non disponibile al momento (compilazione manuale)';
+                progressBar.style.width = '100%';
+                percentText.innerText = '100%';
+                resultBadge.classList.remove('hidden');
+                resultText.innerText = 'Scansione automatica fallita. Inserisci i dati a mano.';
+            }
+        }
+
+        function parseReceiptText(rawText) {
+            if (!rawText) return { amount: null, currency: 'EUR', date: null, category: null };
+
+            const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+            let amount = null;
+            let currency = 'EUR';
+            let date = null;
+            let category = null;
+
+            if (/\b(CHF|SFR|SWISS|FRANCI|FRANC)\b/i.test(rawText) || rawText.includes('CHF') || rawText.includes('Fr.') || rawText.includes('SFr')) {
+                currency = 'CHF';
+            } else if (/\b(USD|DOLLAR|DOLLARS)\b/i.test(rawText) || rawText.includes('$')) {
+                currency = 'USD';
+            } else if (/\b(GBP|POUND|STERLING)\b/i.test(rawText) || rawText.includes('£')) {
+                currency = 'GBP';
+            } else if (/\b(JPY|YEN)\b/i.test(rawText) || rawText.includes('¥')) {
+                currency = 'JPY';
+            } else if (/\b(EUR|EURO|EUROS)\b/i.test(rawText) || rawText.includes('€')) {
+                currency = 'EUR';
+            }
+
+            const totalKeywords = [
+                /totale/i, /total/i, /importo/i, /corrispettivo/i, /pagato/i, 
+                /eur/i, /euro/i, /€/, /chf/i, /fr/i, /sfr/i, /tot/i, /amount/i, /due/i
+            ];
+
+            let potentialAmounts = [];
+
+            lines.forEach(line => {
+                const isTotalLine = totalKeywords.some(kw => kw.test(line));
+                const matches = line.match(/(?:[€$£¥]|CHF)?\s*(\d{1,5}(?:[\.,]\d{2})?|\d{1,5}[\.,]\d{1})\s*(?:[€$£¥]|CHF)?/gi);
+
+                if (matches) {
+                    matches.forEach(m => {
+                        const cleanNumStr = m.replace(/[^0-9\.,]/g, '').replace(',', '.');
+                        const num = parseFloat(cleanNumStr);
+                        if (!isNaN(num) && num > 0 && num < 20000) {
+                            const hasDecimals = cleanNumStr.includes('.');
+                            potentialAmounts.push({
+                                val: num,
+                                numStr: num.toFixed(2),
+                                isTotalLine: isTotalLine,
+                                hasDecimals: hasDecimals
+                            });
+                        }
+                    });
+                }
+            });
+
+            const totalLineMatches = potentialAmounts.filter(a => a.isTotalLine && a.hasDecimals);
+            if (totalLineMatches.length > 0) {
+                amount = totalLineMatches[totalLineMatches.length - 1].numStr;
+            } else {
+                const decimalMatches = potentialAmounts.filter(a => a.hasDecimals);
+                if (decimalMatches.length > 0) {
+                    const maxVal = Math.max(...decimalMatches.map(a => a.val));
+                    amount = maxVal.toFixed(2);
+                } else if (potentialAmounts.length > 0) {
+                    const maxVal = Math.max(...potentialAmounts.map(a => a.val));
+                    amount = maxVal.toFixed(2);
+                }
+            }
+
+            const dateMatch = rawText.match(/\b(0?[1-9]|[12][0-9]|3[01])[\/\.-](0?[1-9]|1[012])[\/\.-](20\d{2}|\d{2})\b/);
+            if (dateMatch) {
+                let day = dateMatch[1].padStart(2, '0');
+                let month = dateMatch[2].padStart(2, '0');
+                let year = dateMatch[3];
+                if (year.length === 2) year = '20' + year;
+                date = `${year}-${month}-${day}`;
+            }
+
+            const lowerText = rawText.toLowerCase();
+            if (/ristorante|osteria|trattoria|pizzeria|bar|caffè|caffe|burger|mcdonald|food|snack|cena|pranzo/i.test(lowerText)) {
+                category = 'Vitto / Ristoranti';
+            } else if (/hotel|albergo|b&b|resort|hostel|motel|inn|soggiorno/i.test(lowerText)) {
+                category = 'Alloggio / Hotel';
+            } else if (/trenitalia|italo|aereo|flight|airport|aeroporto|ticket|bus|metro|sbb|ffs|cff/i.test(lowerText)) {
+                category = 'Trasporti / Treno / Aereo';
+            } else if (/eni|q8|esso|ip|tamoil|shell|carburante|gasolio|benzina|distributore|agip/i.test(lowerText)) {
+                category = 'Carburante';
+            } else if (/telepass|autostrade|pedaggio|toll/i.test(lowerText)) {
+                category = 'Pedaggi / Autostrada';
+            } else if (/taxi|uber|cab|lyft/i.test(lowerText)) {
+                category = 'Taxi / Uber';
+            }
+
+            return { amount, currency, date, category };
+        }
+
+        function handleSaveExpense(e) {
+            e.preventDefault();
+
+            const id = document.getElementById('expenseId').value;
+            const date = document.getElementById('formDate').value;
+            const category = document.getElementById('formCategory').value;
+            const payment = document.getElementById('formPayment').value;
+            const currency = document.getElementById('formCurrency').value;
+            const amount = parseFloat(document.getElementById('formAmount').value);
+            const notes = document.getElementById('formNotes').value;
+
+            if (id) {
+                const index = expenses.findIndex(x => x.id === id);
+                if (index !== -1) {
+                    expenses[index] = {
+                        id,
+                        date,
+                        category,
+                        payment,
+                        currency,
+                        amount,
+                        notes,
+                        receipt: currentReceiptData
+                    };
+                    showToast('Spesa aggiornata correttamente!', 'success');
+                }
+            } else {
+                const newExp = {
+                    id: 'exp-' + Date.now(),
+                    date,
+                    category,
+                    payment,
+                    currency,
+                    amount,
+                    notes,
+                    receipt: currentReceiptData
+                };
+                expenses.push(newExp);
+                showToast('Nuova spesa aggiunta!', 'success');
+            }
+
+            closeModal('expenseModal');
+            renderTable();
+        }
+
+        function editExpense(id) {
+            const exp = expenses.find(x => x.id === id);
+            if (!exp) return;
+
+            document.getElementById('expenseForm').reset();
+            document.getElementById('ocrStatusBox').classList.add('hidden');
+
+            document.getElementById('expenseId').value = exp.id;
+            document.getElementById('modalTitle').innerText = 'Modifica Spesa';
+            document.getElementById('formDate').value = exp.date;
+            document.getElementById('formCategory').value = exp.category;
+            document.getElementById('formPayment').value = exp.payment;
+            document.getElementById('formCurrency').value = exp.currency || 'EUR';
+            document.getElementById('formAmount').value = exp.amount;
+            document.getElementById('formNotes').value = exp.notes || '';
+
+            currentReceiptData = exp.receipt || null;
+            if (currentReceiptData) {
+                document.getElementById('previewImgThumbnail').src = currentReceiptData;
+                document.getElementById('receiptFileName').innerText = 'Scontrino allegato';
+                document.getElementById('uploadPrompt').classList.add('hidden');
+                document.getElementById('receiptPreviewBox').classList.remove('hidden');
+            } else {
+                document.getElementById('receiptPreviewBox').classList.add('hidden');
+                document.getElementById('uploadPrompt').classList.remove('hidden');
+            }
+
+            openModal('expenseModal');
+        }
+
+        function promptDeleteExpense(id) {
+            openConfirmModal(
+                'Elimina Spesa',
+                'Sei sicuro di voler eliminare questa voce di spesa? L\'azione non è reversibile.',
+                () => {
+                    expenses = expenses.filter(x => x.id !== id);
+                    renderTable();
+                    showToast('Spesa eliminata', 'info');
+                }
+            );
+        }
+
+        function openReceiptViewer(id) {
+            const exp = expenses.find(x => x.id === id);
+            if (!exp || !exp.receipt) return;
+
+            const modalImg = document.getElementById('receiptModalImg');
+            modalImg.src = exp.receipt;
+            currentRotation = 0;
+            modalImg.style.transform = `rotate(${currentRotation}deg)`;
+
+            const currSymbol = getCurrencySymbol(exp.currency || 'EUR');
+            document.getElementById('receiptModalMeta').innerText = `${exp.category} - ${currSymbol} ${parseFloat(exp.amount).toFixed(2)} (${formatDate(exp.date)})`;
+            document.getElementById('downloadReceiptBtn').href = exp.receipt;
+
+            openModal('receiptModal');
+        }
+
+        function rotateModalImage() {
+            currentRotation = (currentRotation + 90) % 360;
+            document.getElementById('receiptModalImg').style.transform = `rotate(${currentRotation}deg)`;
+        }
+
+        function saveUserProfile() {
+            const profile = {
+                name: document.getElementById('userFullName').value,
+                periodFrom: document.getElementById('userPeriodFrom').value,
+                periodTo: document.getElementById('userPeriodTo').value,
+                project: document.getElementById('userProject').value
+            };
+            localStorage.setItem('nota_spese_profile', JSON.stringify(profile));
+            updatePrintHeader();
+            showToast('Dati anagrafici salvati!', 'success');
+        }
+
+        function loadUserProfile() {
+            const saved = localStorage.getItem('nota_spese_profile');
+            if (saved) {
+                try {
+                    const profile = JSON.parse(saved);
+                    document.getElementById('userFullName').value = profile.name || 'Mario Rossi';
+                    document.getElementById('userPeriodFrom').value = profile.periodFrom || profile.period || '2026-08-01';
+                    document.getElementById('userPeriodTo').value = profile.periodTo || '2026-08-20';
+                    document.getElementById('userProject').value = profile.project || 'PRJ-2026-MILANO';
+                } catch(e) {}
+            }
+        }
+
+        function updatePrintHeader() {
+            const name = document.getElementById('userFullName')?.value || '-';
+            const proj = document.getElementById('userProject')?.value || '-';
+            const fromVal = document.getElementById('userPeriodFrom')?.value || '';
+            const toVal = document.getElementById('userPeriodTo')?.value || '';
+
+            const printEmpName = document.getElementById('printEmpName');
+            const printEmpProj = document.getElementById('printEmpProj');
+            const printEmpPeriod = document.getElementById('printEmpPeriod');
+
+            if (printEmpName) printEmpName.innerText = name;
+            if (printEmpProj) printEmpProj.innerText = proj;
+
+            let periodText = '-';
+            if (fromVal && toVal) {
+                periodText = `Dal ${formatDate(fromVal)} al ${formatDate(toVal)}`;
+            } else if (fromVal) {
+                periodText = `Dal ${formatDate(fromVal)}`;
+            } else if (toVal) {
+                periodText = `Fino al ${formatDate(toVal)}`;
+            }
+            if (printEmpPeriod) printEmpPeriod.innerText = periodText;
+        }
+
+        function promptResetData() {
+            openConfirmModal(
+                'Resetta Tutto',
+                'Vuoi davvero resettare tutte le spese e l\'anagrafica alle impostazioni iniziali?',
+                () => {
+                    localStorage.removeItem('nota_spese_profile');
+                    location.reload();
+                }
+            );
+        }
+
+        function toggleCharts() {
+            const container = document.getElementById('chartsContainer');
+            container.classList.toggle('hidden');
+            if (!container.classList.contains('hidden')) {
+                updateCharts();
+            }
+        }
+
+        function initCharts() {
+            const ctxCat = document.getElementById('categoryChart')?.getContext('2d');
+            const ctxPay = document.getElementById('paymentChart')?.getContext('2d');
+
+            if (!ctxCat || !ctxPay) return;
+
+            categoryChartInstance = new Chart(ctxCat, {
+                type: 'doughnut',
+                data: { labels: [], datasets: [{ data: [], backgroundColor: ['#3b82f6', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#64748b', '#ec4899'] }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } } }
+            });
+
+            paymentChartInstance = new Chart(ctxPay, {
+                type: 'pie',
+                data: { labels: [], datasets: [{ data: [], backgroundColor: ['#8b5cf6', '#f59e0b', '#3b82f6'] }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } } }
+            });
+        }
+
+        function updateCharts(filteredList = getFilteredExpenses()) {
+            if (!categoryChartInstance || !paymentChartInstance) return;
+
+            const catTotals = {};
+            const payTotals = {};
+
+            filteredList.forEach(e => {
+                const amt = parseFloat(e.amount || 0);
+                catTotals[e.category] = (catTotals[e.category] || 0) + amt;
+                payTotals[e.payment] = (payTotals[e.payment] || 0) + amt;
+            });
+
+            categoryChartInstance.data.labels = Object.keys(catTotals);
+            categoryChartInstance.data.datasets[0].data = Object.values(catTotals);
+            categoryChartInstance.update();
+
+            paymentChartInstance.data.labels = Object.keys(payTotals);
+            paymentChartInstance.data.datasets[0].data = Object.values(payTotals);
+            paymentChartInstance.update();
+        }
+
+        function handlePrint() {
+            updatePrintHeader();
+            window.print();
+        }
+
+        function exportToCSV() {
+            const dataToExport = getFilteredExpenses();
+
+            if (dataToExport.length === 0) {
+                showToast('Nessuna spesa nel periodo da esportare.', 'warning');
+                return;
+            }
+
+            let csvContent = "\uFEFF";
+            csvContent += "ID;Data;Categoria;Metodo Pagamento;Valuta;Importo;Note\n";
+
+            dataToExport.forEach(e => {
+                const row = [
+                    e.id,
+                    e.date,
+                    `"${e.category}"`,
+                    `"${e.payment}"`,
+                    `"${e.currency || 'EUR'}"`,
+                    e.amount.toFixed(2).replace('.', ','),
+                    `"${(e.notes || '').replace(/"/g, '""')}"`
+                ];
+                csvContent += row.join(';') + "\n";
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            const periodStr = document.getElementById('userPeriodFrom')?.value || 'Export';
+            link.setAttribute('href', url);
+            link.setAttribute('download', `Nota_Spese_${periodStr}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast('File CSV esportato con successo!', 'success');
+        }
+
+        function exportToPDF() {
+            updatePrintHeader();
+
+            const empName = document.getElementById('userFullName')?.value || 'Dipendente';
+            const periodFrom = document.getElementById('userPeriodFrom')?.value;
+            const periodTo = document.getElementById('userPeriodTo')?.value;
+            const project = document.getElementById('userProject')?.value;
+            const printDate = new Date().toLocaleDateString('it-IT');
+
+            let periodText = '-';
+            if (periodFrom && periodTo) periodText = `Dal ${formatDate(periodFrom)} al ${formatDate(periodTo)}`;
+            else if (periodFrom) periodText = `Dal ${formatDate(periodFrom)}`;
+            else if (periodTo) periodText = `Fino al ${formatDate(periodTo)}`;
+
+            const filtered = getFilteredExpenses();
+            filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            let tableRowsHtml = '';
+            let totalsByCurr = {};
+            let receiptsHtml = '';
+
+            filtered.forEach((exp, idx) => {
+                const curr = exp.currency || 'EUR';
+                const amt = parseFloat(exp.amount || 0);
+                totalsByCurr[curr] = (totalsByCurr[curr] || 0) + amt;
+
+                tableRowsHtml += `
+                    <tr style="border-bottom: 1px solid #e2e8f0; font-size: 11px;">
+                        <td style="padding: 8px; text-align: center;">${idx + 1}</td>
+                        <td style="padding: 8px; font-weight: 500;">${formatDate(exp.date)}</td>
+                        <td style="padding: 8px;">${escapeHtml(exp.category)}</td>
+                        <td style="padding: 8px;">${escapeHtml(exp.notes || '-')}</td>
+                        <td style="padding: 8px;">${escapeHtml(exp.payment)}</td>
+                        <td style="padding: 8px; text-align: right; font-weight: bold;">${getCurrencySymbol(curr)} ${amt.toFixed(2)}</td>
+                    </tr>
+                `;
+
+                if (exp.receipt) {
+                    receiptsHtml += `
+                        <div style="page-break-inside: avoid; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; background-color: #f8fafc; text-align: center; box-sizing: border-box;">
+                            <div style="font-size: 11px; font-weight: bold; color: #0f172a; margin-bottom: 4px;">
+                                Spesa #${idx + 1} - ${escapeHtml(exp.category)}
+                            </div>
+                            <div style="font-size: 10px; color: #475569; margin-bottom: 8px;">
+                                Data: <strong>${formatDate(exp.date)}</strong> | Importo: <strong style="color: #2563eb;">${getCurrencySymbol(curr)} ${amt.toFixed(2)}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: center; align-items: center; max-height: 220px; overflow: hidden;">
+                                <img src="${exp.receipt}" style="max-width: 100%; max-height: 200px; object-fit: contain; border-radius: 4px; border: 1px solid #e2e8f0; background: #ffffff;">
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+
+            const totalStrings = Object.keys(totalsByCurr).map(c => `${getCurrencySymbol(c)} ${totalsByCurr[c].toFixed(2)}`).join(' + ') || '€ 0.00';
+
+            let attachmentsSection = '';
+            if (receiptsHtml) {
+                attachmentsSection = `
+                    <div style="page-break-before: always; margin-top: 20px; border-top: 2px solid #2563eb; padding-top: 16px;">
+                        <h2 style="font-size: 15px; font-weight: bold; color: #0f172a; margin-bottom: 12px;">Allegati Giustificativi e Scontrini</h2>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
+                            ${receiptsHtml}
+                        </div>
+                    </div>
+                `;
+            }
+
+            const printElement = document.createElement('div');
+            printElement.style.padding = '24px';
+            printElement.style.backgroundColor = '#ffffff';
+            printElement.style.color = '#0f172a';
+            printElement.style.fontFamily = 'Inter, sans-serif';
+
+            printElement.innerHTML = `
+                <div style="margin-bottom: 20px; border-bottom: 2px solid #2563eb; padding-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div>
+                        <h1 style="font-size: 20px; font-weight: bold; color: #0f172a; margin: 0;">NOTA SPESE E RIMBORSO TRASFERTA</h1>
+                        <p style="font-size: 11px; color: #64748b; margin: 4px 0 0 0;">Documento riepilogativo per amministrazione e contabilità</p>
+                    </div>
+                    <div style="text-align: right; font-size: 10px; color: #64748b;">
+                        <p style="margin: 0;"><strong>Data Stampa:</strong> ${printDate}</p>
+                        <p style="margin: 2px 0 0 0;"><strong>Rif:</strong> NS-${Date.now().toString().slice(-6)}</p>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; background-color: #f8fafc; padding: 12px; border-radius: 6px; border: 1px solid #e2e8f0; font-size: 11px; margin-bottom: 20px;">
+                    <div><strong>Dipendente:</strong> ${escapeHtml(empName)}</div>
+                    <div><strong>Periodo:</strong> ${periodText}</div>
+                    <div><strong>Progetto / CDC:</strong> ${escapeHtml(project)}</div>
+                </div>
+
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                    <thead>
+                        <tr style="background-color: #f1f5f9; border-bottom: 2px solid #cbd5e1; font-size: 11px; font-weight: bold; text-align: left;">
+                            <th style="padding: 8px; text-align: center; width: 30px;">#</th>
+                            <th style="padding: 8px; width: 80px;">Data</th>
+                            <th style="padding: 8px; width: 140px;">Categoria</th>
+                            <th style="padding: 8px;">Note / Descrizione</th>
+                            <th style="padding: 8px; width: 110px;">Pagamento</th>
+                            <th style="padding: 8px; text-align: right; width: 100px;">Importo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tableRowsHtml}
+                    </tbody>
+                    <tfoot>
+                        <tr style="background-color: #f8fafc; font-weight: bold; border-top: 2px solid #94a3b8; font-size: 12px;">
+                            <td colspan="5" style="padding: 10px; text-align: right; text-transform: uppercase;">Totale Generale Nota Spese:</td>
+                            <td style="padding: 10px; text-align: right; color: #1d4ed8;">${totalStrings}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+
+                ${attachmentsSection}
+            `;
+
+            const opt = {
+                margin:       8,
+                filename:     `Nota_Spese_${empName.replace(/\s+/g, '_')}.pdf`,
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2, logging: false, useCORS: true },
+                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            if (typeof html2pdf !== 'undefined') {
+                html2pdf().set(opt).from(printElement).save();
+                showToast('Generazione PDF con scontrini allegati avviata...', 'info');
+            } else {
+                window.print();
+            }
+        }
+    </script>
+</body>
+</html>
